@@ -206,7 +206,12 @@ class JWTAuthenticationPolicy(object):
         userid = self._get_credentials(request)
         if userid is None:
             return principals
-        self._check_signature(request)
+
+        try:
+            self._check_signature(request)
+        except:
+            return principals
+
         groups = self.find_groups(userid, request)
         if groups is None:
             return principals
