@@ -169,7 +169,11 @@ class JWTAuthenticationPolicy(object):
         callback to check the validity of the claimed identity.
         """
         userid = self._get_credentials(request)
-        self._check_signature(request)
+        try:
+            self._check_signature(request)
+        except:
+            return None
+
         if userid is None:
             return None
         if self.find_groups(userid, request) is None:
@@ -185,6 +189,11 @@ class JWTAuthenticationPolicy(object):
         callback is also not called.
         """
         userid = self._get_credentials(request)
+        try:
+            self._check_signature(request)
+        except:
+            return None
+
         return userid
 
     def effective_principals(self, request):
