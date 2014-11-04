@@ -341,11 +341,15 @@ class JWTAuthenticationPolicy(object):
         if userid:
             return userid
 
-        params = self._get_params(request)
-        if params is None:
-            return None
+        params = self._get_params(request) or {}
+
         if 'token' not in params:
-            return None
+            token = request.params.get('token')
+            if not token:
+                return None
+            else:
+                params['token'] = token
+
         # Now try to pull out the claims from the JWT - note it is unusable if
         # we get a decode error, but might be okay if we get a signature error
         # Thus we may have to call decode TWICE, once with verify=True to see
