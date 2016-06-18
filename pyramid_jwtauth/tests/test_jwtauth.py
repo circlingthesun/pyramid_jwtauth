@@ -240,10 +240,22 @@ class TestJWTAuthenticationPolicy(unittest.TestCase):
         self.assertEqual(headers[0][0], "WWW-Authenticate")
         self.assertTrue(headers[0][1] == "JWT")
 
+    def test_forget_gives_a_challenge_header_with_custom_scheme(self):
+        policy = JWTAuthenticationPolicy(scheme='Bearer')
+        req = self._make_authenticated_request("test@moz.com", "/")
+        headers = policy.forget(req)
+        self.assertTrue(headers[0][1] == "Bearer")
+
     def test_unauthenticated_requests_get_a_challenge(self):
         r = self.app.get("/auth", status=401)
         challenge = r.headers["WWW-Authenticate"]
         self.assertTrue(challenge.startswith("JWT"))
+
+    def test_unauthenticated_requests_get_a_challenge_custom_scheme(self):
+        self.policy.scheme = 'Bearer'
+        r = self.app.get("/auth", status=401)
+        challenge = r.headers["WWW-Authenticate"]
+        self.assertTrue(challenge.startswith('Bearer'))
 
     def test_authenticated_request_works(self):
         req = self._make_authenticated_request("test@moz.com", "/auth")
@@ -453,12 +465,12 @@ class TestJWTAuthenticationPolicy_with_RSA(unittest.TestCase):
     def test_from_settings_with_RSA_public_private_key(self):
         self.assertEqual(self.policy.algorithm, 'RS256')
         self.assertEqual(self.policy.master_secret, None)
-        from Crypto.PublicKey import RSA
+        # from Crypto.PublicKey import RSA
         with open('pyramid_jwtauth/tests/testkey', 'r') as rsa_priv_file:
-            private_key = RSA.importKey(rsa_priv_file.read())
+            private_key = rsa_priv_file.read()
             self.assertEqual(self.policy.private_key, private_key)
         with open('pyramid_jwtauth/tests/testkey.pub', 'r') as rsa_pub_file:
-            public_key = RSA.importKey(rsa_pub_file.read())
+            public_key = rsa_pub_file.read()
             self. assertEqual(self.policy.public_key, public_key)
 
         self.assertNotEqual(private_key, public_key)
@@ -477,3 +489,49 @@ class TestJWTAuthenticationPolicy_with_RSA(unittest.TestCase):
 
         r = self.app.request(req)
         self.assertEqual(r.body, b"test@moz.com")
+
+
+class TestJWTAuthenticationPolicyJWTOptions(unittest.TestCase):
+
+    def _make_request(self, *args, **kwds):
+        return make_request(self.config, *args, **kwds)
+
+    def setup_helper(self, config_settings):
+        self.config = Configurator(settings=config_settings)
+        self.config.include("pyramid_jwtauth")
+        # self.config.add_route("public", "/public")
+        # self.config.add_view(stub_view_public, route_name="public")
+        # self.config.add_route("auth", "/auth")
+        # self.config.add_view(stub_view_auth, route_name="auth")
+        # self.config.add_route("groups", "/groups")
+        # self.config.add_view(stub_view_groups, route_name="groups")
+        self.app = TestApp(self.config.make_wsgi_app())
+        self.policy = self.config.registry.queryUtility(IAuthenticationPolicy)
+
+
+    def test_decode_fails_no_override_on_aud_claim(self):
+        self.setup_helper({
+            "jwtauth.find_groups": "pyramid_jwtauth.tests.test_jwtauth:stub_find_groups",
+            "jwtauth.master_secret": MASTER_SECRET,})
+        # make a token with an audience claim
+        claims = make_claims('user1', claims={'aud': 'me'})
+        req = self._make_request("/auth")
+        jwt_authenticate_request(req, claims, MASTER_SECRET)
+        token = pyramid_jwtauth.utils.parse_authz_header(req)["token"]
+        from jwt.exceptions import InvalidAudienceError
+        with self.assertRaises(InvalidAudienceError):
+            userid = self.policy.authenticated_userid(req)
+        # self.assertEqual(userid, "test@moz.com")
+
+    def test_decode_passes_with_override_on_aud_claim(self):
+        self.setup_helper({
+            "jwtauth.find_groups": "pyramid_jwtauth.tests.test_jwtauth:stub_find_groups",
+            "jwtauth.master_secret": MASTER_SECRET,
+            "jwtauth.disable_verify_aud": True,})
+        # make a token with an audience claim
+        claims = make_claims('user1', claims={'aud': 'me'})
+        req = self._make_request("/auth")
+        jwt_authenticate_request(req, claims, MASTER_SECRET)
+        token = pyramid_jwtauth.utils.parse_authz_header(req)["token"]
+        userid = self.policy.authenticated_userid(req)
+        self.assertEqual(userid, "user1")

@@ -12,9 +12,9 @@ A Pyramid authentication plugin for JSON Web Tokens:
 from __future__ import absolute_import
 
 __ver_major__ = 0
-__ver_minor__ = 0
-__ver_patch__ = 1
-__ver_sub__ = ".dev3"
+__ver_minor__ = 1
+__ver_patch__ = 2
+__ver_sub__ = ""
 __ver_tuple__ = (__ver_major__, __ver_minor__, __ver_patch__, __ver_sub__)
 __version__ = "%d.%d.%d%s" % __ver_tuple__
 
@@ -23,7 +23,6 @@ import functools
 
 from datetime import datetime
 from calendar import timegm
-from Crypto.PublicKey import RSA
 
 from zope.interface import implementer
 
@@ -70,6 +69,38 @@ class JWTAuthenticationPolicy(object):
                            be overridden here.  This is used in
                            authenticated_userid() and related functions.
 
+        * scheme: The scheme name used in the ``Authorization`` header. JWT
+          implementations vary in their use of ``JWT`` (our default) or
+          ``Bearer``.
+
+    The following configuration options are to DISABLE the verification options
+    in the PyJWT decode function.  If the app configures this then it OUGHT to
+    ensure that the claim is verified IN the application.
+
+        * decode_options (these are passed to the __init__() = undefined OR {}
+          with the following keys (these are the defaults):
+
+            options = {
+               'verify_signature': True,
+               'verify_exp': True,
+               'verify_nbf': True,
+               'verify_iat': True,
+               'verify_aud': True
+            }
+
+          i.e to switch off audience checking, pass 'verify_aud': True in
+          decode_options.
+
+          These are passed as the following as part of the ini options/settings
+
+          jwtauth.disable_verify_signature = true (default false)
+          jwtauth.disable_verify_exp = true (default false)
+          jwtauth.disable_verify_nbf = true (default false)
+          jwtauth.disable_verify_iat = true (default false)
+          jwtauth.disable_verify_aud = true (default false)
+
+          NOTE: they are reversed between the settings vs the __init__().
+
     The library takes either a master_secret or private_key/public_key pair.
     In the later case the algorithm must be an RS* version.
     """
@@ -87,7 +118,9 @@ class JWTAuthenticationPolicy(object):
                  public_key_file=None,
                  algorithm='HS256',
                  leeway=None,
-                 userid_in_claim=None):
+                 userid_in_claim=None,
+                 scheme='JWT',
+                 decode_options=None):
         if find_groups is not None:
             self.find_groups = find_groups
         if master_secret is not None:
@@ -95,11 +128,11 @@ class JWTAuthenticationPolicy(object):
         self.private_key = private_key
         if private_key_file is not None:
             with open(private_key_file, 'r') as rsa_priv_file:
-                self.private_key = RSA.importKey(rsa_priv_file.read())
+                self.private_key = rsa_priv_file.read()
         self.public_key = public_key
         if public_key_file is not None:
             with open(public_key_file, 'r') as rsa_pub_file:
-                self.public_key = RSA.importKey(rsa_pub_file.read())
+                self.public_key = rsa_pub_file.read()
         self.algorithm = algorithm
         if leeway is not None:
             self.leeway = leeway
@@ -109,6 +142,8 @@ class JWTAuthenticationPolicy(object):
             self.userid_in_claim = userid_in_claim
         else:
             self.userid_in_claim = 'sub'
+        self.scheme = scheme
+        self.decode_options = decode_options
 
     @classmethod
     def from_settings(cls, settings={}, prefix="jwtauth.", **extra):
@@ -159,6 +194,16 @@ class JWTAuthenticationPolicy(object):
         kwds["algorithm"] = settings.pop("algorithm", "HS256")
         kwds["leeway"] = settings.pop("leeway", 0)
         kwds["userid_in_claim"] = settings.pop("userid_in_claim", "sub")
+        kwds["scheme"] = settings.pop("scheme", "JWT")
+        disable_options = {
+            'verify_signature': settings.pop("disable_verify_signature", None),
+            'verify_exp': settings.pop("disable_verify_exp", None),
+            'verify_nbf': settings.pop("disable_verify_nbf", None),
+            'verify_iat': settings.pop("disable_verify_iat", None),
+            'verify_aud': settings.pop("disable_verify_aud", None),
+        }
+        kwds["decode_options"] = {
+            k: not v for k, v in disable_options.items()}
         return kwds
 
     def authenticated_userid(self, request):
@@ -234,7 +279,7 @@ class JWTAuthenticationPolicy(object):
         This simply issues a new WWW-Authenticate challenge, which should
         cause the client to forget any previously-provisioned credentials.
         """
-        return [("WWW-Authenticate", "JWT")]
+        return [("WWW-Authenticate", self.scheme)]
 
     def challenge(self, request, content="Unauthorized"):
         """Challenge the user for credentials.
@@ -257,7 +302,8 @@ class JWTAuthenticationPolicy(object):
         """
         return []
 
-    def decode_jwt(self, request, jwtauth_token, leeway=None, verify=True):
+    def decode_jwt(self, request, jwtauth_token,
+                   leeway=None, verify=True, options=None):
         """Decode a JWTAuth token into its claims.
 
         This method deocdes the given JWT to provide the claims.  The JWT can
@@ -271,6 +317,19 @@ class JWTAuthenticationPolicy(object):
 
         If private_key/public key is set then the public_key will be used to
         decode the key.
+
+        Note that the 'options' value is normally None, as this function is
+        usually called via the (un)authenticated_userid() which is called by
+        the framework.  Thus the decode 'options' are set as part of
+        configuring the module through Pyramid settings.
+
+        :param request: the Pyramid Request object
+        :param jwtauth_token: the string (bString - Py3) - of the full token
+                              to decode
+        :param leeway: Integer - the number of seconds of leeway to pass to
+                       jwt.decode()
+        :param verify: Boolean - True to verify - passed to jwt.decode()
+        :param options: set of options for what to verify.
         """
         if leeway is None:
             leeway = self.leeway
@@ -278,10 +337,16 @@ class JWTAuthenticationPolicy(object):
             key = self.public_key
         else:
             key = self.master_secret
+        _options = self.decode_options or {}
+        if options:
+            _options.update(options)
+        if len(_options.keys()) == 0:
+            _options = None
         claims = jwt.decode(jwtauth_token,
                             key=key,
                             leeway=leeway,
-                            verify=verify)
+                            verify=verify,
+                            options=_options)
         return claims
 
     def encode_jwt(self, request, claims, key=None, algorithm=None):
@@ -322,7 +387,7 @@ class JWTAuthenticationPolicy(object):
         except KeyError:
             params = parse_authz_header(request, None)
             if params is not None:
-                if params.get("scheme").upper() != "JWT":
+                if params.get("scheme").upper() !=self.scheme:
                     params = None
             request.environ["jwtauth.params"] = params
             return params
@@ -430,7 +495,7 @@ def maybe_encode_time_claims(claims):
 
 
 @normalize_request_object
-def authenticate_request(request, claims, key, algorithm='HS256'):
+def authenticate_request(request, claims, key, algorithm='HS256', scheme='JWT'):
     """Authenticate a webob style request with the appropriate JWT token
 
     This creates the auth token using the claims and the key to ensure that
@@ -446,7 +511,7 @@ def authenticate_request(request, claims, key, algorithm='HS256'):
     params['token'] = jwtauth_token
     # Serialize the parameters back into the authz header, and return it.
     # WebOb has logic to do this that's not perfect, but good enough for us.
-    request.authorization = ('JWT', params)
+    request.authorization = (scheme, params)
     return request.headers['Authorization']
 
 
