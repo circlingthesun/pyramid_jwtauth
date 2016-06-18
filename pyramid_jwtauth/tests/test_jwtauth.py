@@ -47,6 +47,7 @@ def make_request(config, path="/", environ={}):
     my_environ["QUERY_STRING"] = "5000"
     my_environ.update(environ)
     request = Request(my_environ)
+    # print(environ)
     request.registry = config.registry
     return request
 
@@ -238,7 +239,7 @@ class TestJWTAuthenticationPolicy(unittest.TestCase):
         headers = policy.forget(req)
         self.assertEqual(len(headers), 1)
         self.assertEqual(headers[0][0], "WWW-Authenticate")
-        self.assertTrue(headers[0][1] == "JWT")
+        self.assertTrue(headers[0][1] == "Bearer")
 
     def test_forget_gives_a_challenge_header_with_custom_scheme(self):
         policy = JWTAuthenticationPolicy(scheme='Bearer')
@@ -249,13 +250,13 @@ class TestJWTAuthenticationPolicy(unittest.TestCase):
     def test_unauthenticated_requests_get_a_challenge(self):
         r = self.app.get("/auth", status=401)
         challenge = r.headers["WWW-Authenticate"]
-        self.assertTrue(challenge.startswith("JWT"))
+        self.assertTrue(challenge.startswith("Bearer"))
 
     def test_unauthenticated_requests_get_a_challenge_custom_scheme(self):
-        self.policy.scheme = 'Bearer'
+        self.policy.scheme = 'Lolwut'
         r = self.app.get("/auth", status=401)
         challenge = r.headers["WWW-Authenticate"]
-        self.assertTrue(challenge.startswith('Bearer'))
+        self.assertTrue(challenge.startswith('Lolwut'))
 
     def test_authenticated_request_works(self):
         req = self._make_authenticated_request("test@moz.com", "/auth")

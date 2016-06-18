@@ -119,7 +119,7 @@ class JWTAuthenticationPolicy(object):
                  algorithm='HS256',
                  leeway=None,
                  userid_in_claim=None,
-                 scheme='JWT',
+                 scheme='Bearer',
                  decode_options=None):
         if find_groups is not None:
             self.find_groups = find_groups
@@ -194,7 +194,7 @@ class JWTAuthenticationPolicy(object):
         kwds["algorithm"] = settings.pop("algorithm", "HS256")
         kwds["leeway"] = settings.pop("leeway", 0)
         kwds["userid_in_claim"] = settings.pop("userid_in_claim", "sub")
-        kwds["scheme"] = settings.pop("scheme", "JWT")
+        kwds["scheme"] = settings.pop("scheme", "Bearer")
         disable_options = {
             'verify_signature': settings.pop("disable_verify_signature", None),
             'verify_exp': settings.pop("disable_verify_exp", None),
@@ -387,7 +387,7 @@ class JWTAuthenticationPolicy(object):
         except KeyError:
             params = parse_authz_header(request, None)
             if params is not None:
-                if params.get("scheme").upper() !=self.scheme:
+                if params.get("scheme").upper() != self.scheme.upper():
                     params = None
             request.environ["jwtauth.params"] = params
             return params
@@ -495,7 +495,7 @@ def maybe_encode_time_claims(claims):
 
 
 @normalize_request_object
-def authenticate_request(request, claims, key, algorithm='HS256', scheme='JWT'):
+def authenticate_request(request, claims, key, algorithm='HS256', scheme='Bearer'):
     """Authenticate a webob style request with the appropriate JWT token
 
     This creates the auth token using the claims and the key to ensure that
@@ -507,11 +507,9 @@ def authenticate_request(request, claims, key, algorithm='HS256', scheme='JWT'):
     jwtauth_token = jwt.encode(claims, key=key, algorithm=algorithm)
     if sys.version_info >= (3, 0, 0):
         jwtauth_token = jwtauth_token.decode(encoding='UTF-8')
-    params = dict()
-    params['token'] = jwtauth_token
     # Serialize the parameters back into the authz header, and return it.
     # WebOb has logic to do this that's not perfect, but good enough for us.
-    request.authorization = (scheme, params)
+    request.authorization = (scheme, jwtauth_token)
     return request.headers['Authorization']
 
 

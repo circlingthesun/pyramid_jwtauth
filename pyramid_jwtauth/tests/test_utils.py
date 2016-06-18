@@ -34,59 +34,16 @@ class TestUtils(unittest.TestCase):
             return request
 
         # Test parsing of a single unquoted parameter.
-        params = parse_authz_header(req('Digest realm=hello'))
-        self.assertEqual(params['scheme'], 'Digest')
-        self.assertEqual(params['realm'], 'hello')
-
-        # Test parsing of multiple parameters with mixed quotes.
-        params = parse_authz_header(req('Digest test=one, again="two"'))
-        self.assertEqual(params['scheme'], 'Digest')
-        self.assertEqual(params['test'], 'one')
-        self.assertEqual(params['again'], 'two')
-
-        # Test parsing of an escaped quote and empty string.
-        params = parse_authz_header(req('Digest test="\\"",again=""'))
-        self.assertEqual(params['scheme'], 'Digest')
-        self.assertEqual(params['test'], '"')
-        self.assertEqual(params['again'], '')
-
-        # Test parsing of embedded commas, escaped and non-escaped.
-        params = parse_authz_header(req('Digest one="1\\,2", two="3,4"'))
-        self.assertEqual(params['scheme'], 'Digest')
-        self.assertEqual(params['one'], '1,2')
-        self.assertEqual(params['two'], '3,4')
+        params = parse_authz_header(req('Bearer THISISATOKEN'))
+        self.assertEqual(params['scheme'], 'Bearer')
+        self.assertEqual(params['token'], 'THISISATOKEN')
 
         # Test parsing on various malformed inputs
         self.assertRaises(ValueError, parse_authz_header, req(None))
         self.assertRaises(ValueError, parse_authz_header, req(""))
         self.assertRaises(ValueError, parse_authz_header, req(" "))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken raw-token'))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken realm="unclosed-quote'))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken realm=unopened-quote"'))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken realm="unescaped"quote"'))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken realm="escaped-end-quote\\"'))
-        self.assertRaises(ValueError, parse_authz_header,
-                          req('Broken realm="duplicated",,what=comma'))
 
         # Test all those again, but returning a default value
         self.assertEqual(None, parse_authz_header(req(None), None))
         self.assertEqual(None, parse_authz_header(req(""), None))
         self.assertEqual(None, parse_authz_header(req(" "), None))
-        self.assertEqual(None,
-                          parse_authz_header(req('Broken raw-token'), None))
-        self.assertEqual(None, parse_authz_header(
-                          req('Broken realm="unclosed-quote'), None))
-        self.assertEqual(None, parse_authz_header(
-                          req('Broken realm=unopened-quote"'), None))
-        self.assertEqual(None, parse_authz_header(
-                          req('Broken realm="unescaped"quote"'), None))
-        self.assertEqual(None, parse_authz_header(
-                          req('Broken realm="escaped-end-quote\\"'), None))
-        self.assertEqual(None, parse_authz_header(
-                          req('Broken realm="duplicated",,what=comma'), None))
-
