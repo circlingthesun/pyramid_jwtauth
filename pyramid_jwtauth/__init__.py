@@ -249,20 +249,25 @@ class JWTAuthenticationPolicy(object):
         """
         principals = [Everyone]
         userid = self._get_credentials(request)
-        if userid is None:
-            return principals
-
+        
         try:
             self._check_signature(request)
         except:
             return principals
 
         groups = self.find_groups(userid, request)
+
         if groups is None:
             return principals
-        principals.insert(0, userid)
-        principals.append(Authenticated)
+
         principals.extend(groups)
+
+        if userid is not None:
+            principals.insert(0, userid)
+        
+        if len(principals) > 1:
+            principals.append(Authenticated)
+        
         return principals
 
     def remember(self, request, principal, **kw):

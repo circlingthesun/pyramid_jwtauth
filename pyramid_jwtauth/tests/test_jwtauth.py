@@ -391,7 +391,7 @@ class TestJWTAuthenticationPolicy(unittest.TestCase):
         req = self._make_authenticated_request("test", "/groups")
         r = self.app.request(req)
         self.assertEqual(r.json,
-                          ["test", str(Everyone), str(Authenticated), "group"])
+                          ["test", str(Everyone), "group", str(Authenticated)])
         req = self._make_authenticated_request("baduser", "/groups")
         r = self.app.request(req)
         self.assertEqual(r.json,
