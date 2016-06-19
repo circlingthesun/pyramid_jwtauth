@@ -509,7 +509,7 @@ def authenticate_request(request, claims, key, algorithm='HS256', scheme='Bearer
         jwtauth_token = jwtauth_token.decode(encoding='UTF-8')
     # Serialize the parameters back into the authz header, and return it.
     # WebOb has logic to do this that's not perfect, but good enough for us.
-    request.authorization = (scheme, jwtauth_token)
+    request.authorization = ' '.join([scheme, jwtauth_token])
     return request.headers['Authorization']
 
 
