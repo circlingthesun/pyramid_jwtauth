@@ -414,7 +414,12 @@ class JWTAuthenticationPolicy(object):
         params = self._get_params(request) or {}
 
         if 'token' not in params:
-            token = request.params.get('token')
+            token = None
+            try:
+                token = request.params.get('token')
+            except UnicodeDecodeError:
+                pass
+
             if not token:
                 return None
             else:
